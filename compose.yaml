@@ -1,0 +1,80 @@
+name: media
+
+networks:
+    ds218:
+        external: true
+        name: net_bridge
+    macvlan:
+        external: true
+        name: net_macvlan
+
+services:
+
+    mkvtoolnix:
+        container_name: media-mkvtoolnix
+        image: jlesage/mkvtoolnix:latest
+        healthcheck:
+            #проверка работы сайта
+            test: ["CMD", "ping", "-c3", "xn--80awicg8e.xn--b1adccf5azch6f.xn--p1ai"]
+            start_period: 15s
+            interval: 10s
+            timeout: 5s
+            retries: 3
+        restart: on-failure:3
+        networks:
+            - ds218
+            - macvlan
+        volumes:
+            - /volume1/video1:/storage/video1:rw
+            - /volume2/video2:/storage/video2:rw
+            - /volumeUSB2/usbshare/downloads:/storage/downloads:rw
+            - /volumeUSB2/usbshare/serials:/storage/serials:rw
+            - /volume1/docker/mkvtoolnix:/config:rw
+            # если resolv.conf нормальный то контейнер выход и в интернет и видит другие докерконтейнеры
+            - ./env/resolv.conf:/etc/resolv.conf:ro
+        environment:
+            WEB_LISTENING_PORT: 80
+            VNC_LISTENING_PORT: -1
+            USER_ID: 1030
+            GROUP_ID: 100
+
+    calibre_web:
+        depends_on: #ждет запуска mkvtoolnix и здоровья npm
+            mkvtoolnix:
+                condition: service_started
+        container_name: media-calibre_web
+        image: linuxserver/calibre-web:latest
+        networks:
+            - ds218
+            - macvlan
+        restart: on-failure:3
+        environment:
+            PUID: 1030
+            PGID: 100
+            TZ: Europe/Moscow
+            DOCKER_MODS: linuxserver/mods:universal-calibre #optional
+        volumes:
+            - /volume1/docker/calibre:/config:rw
+            - /volume1/librory:/books:rw
+            # если resolv.conf нормальный то контейнер выход и в интернет и видит другие докерконтейнеры
+            - ./env/resolv.conf:/etc/resolv.conf:ro
+
+    cops:
+        depends_on: #ждет запуска mkvtoolnix и здоровья npm
+            calibre_web:
+                condition: service_started
+        image: linuxserver/cops:latest
+        container_name: media-cops
+        networks:
+            - ds218
+            - macvlan
+        restart: on-failure:3
+        environment:
+            PUID: 1030
+            PGID: 100
+            TZ: Europe/Moscow
+        volumes:
+            - /volume1/docker/cops:/config:rw
+            - /volume1/librory:/books:ro
+            # если resolv.conf нормальный то контейнер выход и в интернет и видит другие докерконтейнеры
+            - ./env/resolv.conf:/etc/resolv.conf:ro
